@@ -1,6 +1,6 @@
 // src/pages/Customer/Homepage.jsx
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom'; // 1. Import useNavigate
+import { useNavigate } from 'react-router-dom';
 import { 
   ArrowUp, Minus, Plus, ChefHat, Calendar, Users, 
   Instagram, Facebook, Mail, ChevronDown, Download, ArrowRight 
@@ -45,13 +45,25 @@ const FadeIn = ({ children, delay = 0, direction = 'up' }) => {
 };
 
 const Homepage = () => {
-  const navigate = useNavigate(); // 2. Initialize Navigation
-  const [isScrolled, setIsScrolled] = useState(false);
+  const navigate = useNavigate();
   const [openFaq, setOpenFaq] = useState(null);
-  const [showBackToTop, setShowBackToTop] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
   const [eventType, setEventType] = useState("");
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  
+  // --- Slide Logic States ---
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [isScrolling, setIsScrolling] = useState(false);
+  
+  // Refs
+  const containerRef = useRef(null);
+  const sectionRefs = useRef([]);
+
+  const addToRefs = (el) => {
+    if (el && !sectionRefs.current.includes(el)) {
+      sectionRefs.current.push(el);
+    }
+  };
 
   // --- Dark Mode Logic ---
   useEffect(() => {
@@ -64,23 +76,94 @@ const Homepage = () => {
     }
   }, [darkMode]);
 
-  useEffect(() => {
-    const handleScroll = () => {
-      setIsScrolled(window.scrollY > 50);
-      setShowBackToTop(window.scrollY > 800);
-    };
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
+  // --- CUSTOM SLOW SCROLL ANIMATION (Desktop Only) ---
+  const easeInOutCubic = (t) => {
+    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  };
 
-  const scrollToTop = () => window.scrollTo({ top: 0, behavior: 'smooth' });
+  const smoothScrollTo = (targetPosition, duration) => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const startPosition = container.scrollTop;
+    const distance = targetPosition - startPosition;
+    let startTime = null;
+
+    const animation = (currentTime) => {
+      if (startTime === null) startTime = currentTime;
+      const timeElapsed = currentTime - startTime;
+      const progress = Math.min(timeElapsed / duration, 1);
+      
+      const ease = easeInOutCubic(progress);
+
+      container.scrollTop = startPosition + (distance * ease);
+
+      if (timeElapsed < duration) {
+        requestAnimationFrame(animation);
+      } else {
+        setIsScrolling(false);
+      }
+    };
+
+    requestAnimationFrame(animation);
+  };
+
+  const scrollToSection = (index) => {
+    if (index < 0 || index >= sectionRefs.current.length) return;
+
+    // Update state to show/hide navbar elements or back-to-top
+    setActiveIndex(index);
+
+    // On Desktop: Use Custom Smooth Scroll
+    if (window.innerWidth >= 768) {
+      setIsScrolling(true);
+      const targetSection = sectionRefs.current[index];
+      const targetTop = targetSection.offsetTop;
+      smoothScrollTo(targetTop, 1000); 
+    } else {
+      // On Mobile: Use Native Scroll (safer for variable heights)
+      sectionRefs.current[index].scrollIntoView({ behavior: 'smooth' });
+    }
+  };
+
+  // --- DESKTOP: MOUSE WHEEL LISTENER ---
+  useEffect(() => {
+    const handleWheel = (e) => {
+      // Only use custom scroll jacking on Desktop
+      if (window.innerWidth < 768) return;
+
+      e.preventDefault(); // Stop native scroll
+
+      if (isScrolling) return;
+
+      const direction = e.deltaY > 0 ? 1 : -1;
+      const nextIndex = Math.min(
+        Math.max(activeIndex + direction, 0), 
+        sectionRefs.current.length - 1
+      );
+
+      if (nextIndex !== activeIndex) {
+        scrollToSection(nextIndex);
+      }
+    };
+
+    const container = containerRef.current;
+    if (container) {
+      container.addEventListener('wheel', handleWheel, { passive: false });
+    }
+
+    return () => {
+      if (container) {
+        container.removeEventListener('wheel', handleWheel);
+      }
+    };
+  }, [activeIndex, isScrolling]);
 
   const handleDownload = (e) => {
     e.preventDefault();
     alert("Downloading Menu PDF...");
   };
 
-  // Helper for dynamic colors
   const theme = {
     bg: darkMode ? 'bg-[#0c0c0c]' : 'bg-[#FAFAFA]',
     cardBg: darkMode ? 'bg-[#111]' : 'bg-white',
@@ -90,31 +173,28 @@ const Homepage = () => {
   };
 
   return (
-    <div className={`font-sans antialiased transition-colors duration-500 overflow-x-hidden ${theme.bg} ${theme.text} selection:bg-[#C9A25D] selection:text-white`}>
+    <div 
+      ref={containerRef}
+      // IMPORTANT: Remove 'overflow-hidden' on mobile to allow natural scrolling of tall content
+      className={`h-screen w-full font-sans antialiased transition-colors duration-500 ${theme.bg} ${theme.text} selection:bg-[#C9A25D] selection:text-white overflow-y-scroll md:overflow-hidden`}
+    >
       
-      {/* Fonts & Global Styles */}
       <style>
         {`
           @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,400&family=Inter:wght@300;400;500&display=swap');
           .font-serif { font-family: 'Cormorant Garamond', serif; }
           .font-sans { font-family: 'Inter', sans-serif; }
-          html { scroll-behavior: smooth; }
-          *, *::before, *::after { transition-property: background-color, border-color, color, fill, stroke; transition-duration: 300ms; }
-          
-          select option { 
-            background-color: ${darkMode ? '#1c1c1c' : '#ffffff'}; 
-            color: ${darkMode ? '#e5e5e5' : '#1c1c1c'}; 
-            padding: 12px; 
-          }
-          
-          ::placeholder { color: #a8a29e; opacity: 1; }
         `}
       </style>
 
-      <Navbar darkMode={darkMode} setDarkMode={setDarkMode} isScrolled={isScrolled} />
+      <Navbar darkMode={darkMode} setDarkMode={setDarkMode} isScrolled={activeIndex > 0} />
 
-      {/* --- Hero Section --- */}
-      <header id="home" className="relative h-screen w-full overflow-hidden bg-stone-900 flex flex-col justify-center items-center">
+      {/* --- 0. Hero Section (Fixed Height) --- */}
+      <header 
+        ref={addToRefs}
+        id="home" 
+        className="relative h-screen w-full overflow-hidden bg-stone-900 flex flex-col justify-center items-center"
+      >
         <div className="absolute inset-0 w-full h-full z-0">
           <video 
             autoPlay 
@@ -144,17 +224,13 @@ const Homepage = () => {
               From intimate gatherings to grand celebrations.
             </p>
             
-            {/* --- 3. Updated Buttons for Booking & Menu --- */}
             <div className="flex flex-col md:flex-row gap-5 w-full justify-center items-center">
-              {/* Primary CTA -> Booking */}
               <button 
                 onClick={() => navigate('/booking')} 
                 className="w-full md:w-auto px-10 py-4 bg-white text-stone-900 text-xs tracking-[0.25em] uppercase hover:bg-[#C9A25D] hover:text-white transition-all duration-500 shadow-xl font-bold"
               >
                 Inquire Now
               </button>
-              
-              {/* Secondary CTA -> Menu */}
               <button 
                 onClick={() => navigate('/menu')} 
                 className="w-full md:w-auto px-10 py-4 border border-white/30 text-white text-xs tracking-[0.25em] uppercase hover:bg-white/10 hover:border-white transition-all duration-500 backdrop-blur-sm"
@@ -165,14 +241,20 @@ const Homepage = () => {
           </FadeIn>
         </div>
         
-        <div className="absolute bottom-10 w-full flex flex-col items-center justify-center gap-3 opacity-80 animate-bounce z-10 pointer-events-none">
+        <div 
+          onClick={() => scrollToSection(1)}
+          className="absolute bottom-10 w-full flex flex-col items-center justify-center gap-3 opacity-80 animate-bounce z-10 cursor-pointer hover:opacity-100"
+        >
           <span className="text-[9px] text-white tracking-[0.4em] uppercase">Scroll</span>
           <div className="w-[1px] h-12 bg-gradient-to-b from-white to-transparent"></div>
         </div>
       </header>
 
-      {/* --- About / Intro --- */}
-      <section className={`py-20 md:py-32 ${theme.bg} transition-colors duration-500`}>
+      {/* --- 1. About / Intro (Min Height for Mobile) --- */}
+      <section 
+        ref={addToRefs}
+        className={`min-h-screen md:h-screen flex flex-col justify-center py-20 ${theme.bg} transition-colors duration-500`}
+      >
         <div className="max-w-screen-lg mx-auto px-6 text-center">
           <FadeIn>
             <h2 className={`font-serif text-3xl md:text-5xl ${theme.text} mb-8 leading-tight`}>
@@ -189,9 +271,13 @@ const Homepage = () => {
         </div>
       </section>
 
-      {/* --- Process --- */}
-      <section id="process" className={`py-20 md:py-24 ${theme.cardBg} border-t ${theme.border} transition-colors duration-500`}>
-        <div className="max-w-screen-xl mx-auto px-6">
+      {/* --- 2. Process (Min Height + Fixed Grid Stacking) --- */}
+      <section 
+        ref={addToRefs}
+        id="process" 
+        className={`min-h-screen md:h-screen flex flex-col justify-center py-20 md:py-24 ${theme.cardBg} border-t ${theme.border} transition-colors duration-500`}
+      >
+        <div className="max-w-screen-xl mx-auto px-6 w-full">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-12 md:gap-8">
             {[
               { icon: Users, title: "Consultation", desc: "We listen to your story to craft a proposal that is uniquely yours." },
@@ -214,27 +300,22 @@ const Homepage = () => {
         </div>
       </section>
 
-      {/* --- Curated Menus --- */}
-      <section id="menu" className={`py-20 md:py-32 ${theme.bg} transition-colors duration-500`}>
-        <div className="max-w-screen-xl mx-auto px-6">
+      {/* --- 3. Curated Menus (Min Height) --- */}
+      <section 
+        ref={addToRefs}
+        id="menu" 
+        className={`min-h-screen md:h-screen flex flex-col justify-center py-20 md:py-32 ${theme.bg} transition-colors duration-500`}
+      >
+        <div className="max-w-screen-xl mx-auto px-6 w-full">
           <FadeIn>
             <div className={`flex flex-col md:flex-row justify-between items-end mb-12 md:mb-20 border-b ${theme.border} pb-6`}>
               <h2 className={`font-serif text-4xl md:text-5xl ${theme.text}`}>Curated Menus</h2>
-              
               <div className="flex gap-6 mt-4 md:mt-0">
-                 {/* Link to Menu Page */}
-                 <button 
-                  onClick={() => navigate('/menu')}
-                  className={`group flex items-center gap-2 text-xs tracking-[0.2em] uppercase ${theme.subText} hover:text-[#C9A25D] transition-colors cursor-pointer`}
-                >
+                 <button onClick={() => navigate('/menu')} className={`group flex items-center gap-2 text-xs tracking-[0.2em] uppercase ${theme.subText} hover:text-[#C9A25D] transition-colors cursor-pointer`}>
                   <span>View All</span>
                   <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform duration-300" />
                 </button>
-
-                <button 
-                  onClick={handleDownload}
-                  className={`group flex items-center gap-2 text-xs tracking-[0.2em] uppercase ${theme.subText} hover:text-[#C9A25D] transition-colors cursor-pointer`}
-                >
+                <button onClick={handleDownload} className={`group flex items-center gap-2 text-xs tracking-[0.2em] uppercase ${theme.subText} hover:text-[#C9A25D] transition-colors cursor-pointer`}>
                   <span>Download PDF</span>
                   <Download className="w-4 h-4 group-hover:translate-y-1 transition-transform duration-300" />
                 </button>
@@ -242,7 +323,12 @@ const Homepage = () => {
             </div>
           </FadeIn>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          {/* 
+             Mobile Fix: 
+             We prevent cards from being too tall and overlapping. 
+             On mobile, we display them in a column (grid-cols-1) with spacing.
+          */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-10 md:gap-8">
             {[
               { title: "The Gala", img: "https://images.pexels.com/photos/2544829/pexels-photo-2544829.jpeg?auto=compress&cs=tinysrgb&w=800", sub: "Plated Dinners" },
               { title: "Al Fresco", img: "https://images.pexels.com/photos/5638268/pexels-photo-5638268.jpeg?auto=compress&cs=tinysrgb&w=800", sub: "Open Air Events" },
@@ -269,25 +355,41 @@ const Homepage = () => {
         </div>
       </section>
 
-      {/* --- Gallery --- */}
-      <section id="gallery" className="py-0 bg-stone-900">
-        <div className="grid grid-cols-2 md:grid-cols-4 h-[600px] md:h-[800px]">
+      {/* --- 4. Gallery --- */}
+      <section 
+        ref={addToRefs}
+        id="gallery" 
+        className="h-screen w-full bg-stone-900 snap-start"
+      >
+        {/* 
+           Fix: Removed 'flex items-center' and 'py-0'. 
+           The grid now stretches to fill the exact 'h-screen' container.
+        */}
+        <div className="grid grid-cols-2 md:grid-cols-4 h-full w-full">
           {[
             "https://images.pexels.com/photos/3026808/pexels-photo-3026808.jpeg?auto=compress&cs=tinysrgb&w=800",
             "https://images.pexels.com/photos/3217156/pexels-photo-3217156.jpeg?auto=compress&cs=tinysrgb&w=800",
             "https://images.pexels.com/photos/4552130/pexels-photo-4552130.jpeg?auto=compress&cs=tinysrgb&w=800",
             "https://images.pexels.com/photos/4253320/pexels-photo-4253320.jpeg?auto=compress&cs=tinysrgb&w=800"
           ].map((src, i) => (
-            <div key={i} className="relative group overflow-hidden border border-stone-800/50 h-full w-full">
-              <img src={src} alt="Detail" className="w-full h-full object-cover opacity-60 transition-all duration-700 group-hover:opacity-100 group-hover:scale-105" />
+            <div key={i} className="relative group overflow-hidden border border-stone-800/50 w-full h-full">
+              <img 
+                src={src} 
+                alt="Detail" 
+                className="w-full h-full object-cover opacity-80 transition-all duration-1000 group-hover:opacity-100 group-hover:scale-105" 
+              />
             </div>
           ))}
         </div>
       </section>
 
-      {/* --- FAQ --- */}
-      <section id="faq" className={`py-20 md:py-32 ${theme.cardBg} transition-colors duration-500`}>
-        <div className="max-w-screen-md mx-auto px-6">
+      {/* --- 5. FAQ (Min Height) --- */}
+      <section 
+        ref={addToRefs}
+        id="faq" 
+        className={`min-h-screen md:h-screen flex flex-col justify-center py-20 md:py-32 ${theme.cardBg} transition-colors duration-500`}
+      >
+        <div className="max-w-screen-md mx-auto px-6 w-full">
           <FadeIn>
             <h2 className={`font-serif text-4xl ${theme.text} mb-16 text-center`}>Common Inquiries</h2>
           </FadeIn>
@@ -314,10 +416,13 @@ const Homepage = () => {
         </div>
       </section>
 
-      {/* --- Contact --- */}
-      <section id="contact" className={`py-20 md:py-32 ${theme.bg} relative overflow-visible transition-colors duration-500`}>
-        <div className="max-w-screen-lg mx-auto px-6 flex flex-col md:flex-row items-center gap-12 md:gap-16">
-          
+      {/* --- 6. Contact (Min Height) --- */}
+      <section 
+        ref={addToRefs}
+        id="contact" 
+        className={`min-h-screen md:h-screen flex flex-col justify-center py-20 md:py-32 ${theme.bg} relative overflow-visible transition-colors duration-500`}
+      >
+        <div className="max-w-screen-lg mx-auto px-6 flex flex-col md:flex-row items-center gap-12 md:gap-16 w-full">
           <div className="w-full md:w-1/2 text-left">
             <FadeIn>
               <span className="text-[#C9A25D] text-xs tracking-[0.2em] uppercase mb-4 block">Get in Touch</span>
@@ -382,13 +487,16 @@ const Homepage = () => {
         </div>
       </section>
 
-      <Footer darkMode={darkMode} />
+      {/* --- 7. Footer (Final Slide) --- */}
+      <div ref={addToRefs} className="h-auto">
+        <Footer darkMode={darkMode} />
+      </div>
 
       {/* --- Back to Top --- */}
       <button 
-        onClick={scrollToTop}
+        onClick={() => scrollToSection(0)}
         className={`fixed bottom-8 right-8 p-3 ${darkMode ? 'bg-stone-800/50 border-stone-700 hover:bg-white hover:text-stone-900' : 'bg-white/10 border-stone-200 hover:bg-stone-900 hover:text-white'} backdrop-blur-md border rounded-full shadow-lg transition-all duration-500 z-50 ${
-          showBackToTop ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10 pointer-events-none'
+          activeIndex > 0 ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10 pointer-events-none'
         }`}
       >
         <ArrowUp className="w-5 h-5" strokeWidth={1.5} />
